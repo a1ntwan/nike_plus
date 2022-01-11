@@ -1,0 +1,28 @@
+---
+host1:
+  time: "2021-12-10 15:30:01"
+  url: "https://www.nike.com/ru/launch/t/womens-air-force-1-high-sculpt-silver"
+  email: "onetwothree@yandex.ru"
+  password: "qwerty"
+  size: "9"
+  cvv: "000"
+  user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36"
+  proxy: "https://cz5zGr:0vf3TJ@45.11.126.89:8000"
+host2:
+  time: "2021-12-10 15:30:01"
+  url: "https://www.nike.com/ru/launch/t/womens-air-force-1-high-sculpt-silver"
+  email: "onetwothree@yandex.ru"
+  password: "qwerty"
+  size: "9"
+  cvv: "000"
+  user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36"
+  proxy: "https://cz5zGr:0vf3TJ@45.11.126.88:8000"
+host3:
+  time: "2021-12-10 15:30:01"
+  url: "https://www.nike.com/ru/launch/t/womens-air-force-1-high-sculpt-silver"
+  email: "onetwothree@yandex.ru"
+  password: "qwerty"
+  size: "9"
+  cvv: "000"
+  user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36"
+  proxy: "https://cz5zGr:0vf3TJ@45.11.126.87:8000"

@@ -1,0 +1,26 @@
+---
+stages:
+  - build
+  - deploy
+
+build-job:
+  stage: build
+  image: python:3.7.12
+  script:
+    - python3 -m pip install -r requirements.txt --user
+    - python3 nike_template.py
+  tags: ["docker"]
+  artifacts:
+    paths:
+      - docker-compose.yml
+      - host*/
+    expire_in: 1 hour
+
+deploy-job:
+  stage: deploy
+  script:
+    - docker-compose up
+  artifacts:
+    paths:
+      - ./*screen.png
+    expire_in: 1 hour
