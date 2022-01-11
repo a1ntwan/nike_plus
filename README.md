@@ -16,4 +16,13 @@ Some issues regarding code:
 - The more accs you use, the better chance you have.
 
 Issues regarding docker-compose version:
-- Final screens with results are going to be saved as Gitlab-CI artifacts for 1 hour. Logs are stored in host* dir. 
+- Add your credentials to vars.yml file;
+- Final screens with results are going to be saved as Gitlab-CI artifacts for 1 hour. Logs are stored in host* dir.
+
+Issues regarding helm version:
+- Verify you Gitlab-CI registry is working correctly;  
+- Change default region and S3 bucket name you want to create in .gitlab-ci.yml file;
+- Change "kubectl config use-context a1ntwan/nike_plus:gitlab-agent" lines with the context of your own gitlab-agent in .gitlab-ci.yml file (lines **55** and **72**);
+- Add your $AWS_ACCESS_KEY_ID and $AWS_SECRET_ACCESS_KEY to Gitlab-CI CI/CD variables;
+- Create your $CI_DEPLOY_USER and $CI_DEPLOY_PASSWORD Gitlab-CI CI/CD variables;
+- Add your credentials to nike/vars.yml file.

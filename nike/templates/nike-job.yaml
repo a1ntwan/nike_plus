@@ -1,0 +1,54 @@
+{{ $namespace := .Values.namespace }}
+{{ $name := .Chart.Name }}
+{{ $container := .Values.container.name }}
+{{ $image := .Values.container.image }}
+{{- range $host, $vars := .Files.Get "vars.yml" | fromYaml }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}-{{ $host }}
+  namespace: {{ $namespace }}
+spec:
+  template:
+    spec:
+      containers:
+        - name: {{ $container }}-{{ $host}}
+          image: {{ $image }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - python3 sneakers.py
+          env:
+          {{- range $key, $value := $vars }}
+          {{- if ne $key "time" }}
+            - name: {{- if eq $key "password" }} PASS {{- else }} {{ upper $key }} {{- end }}
+              valueFrom:
+                secretKeyRef:
+                  name: nike-{{ $host }}-secret
+                  key: {{ $key }}
+          {{- else }}
+          {{- range tuple "year" "month" "day" "hour" "minute" "second" }}
+            - name: {{ upper . }}
+              valueFrom:
+                secretKeyRef:
+                  name: nike-{{ $host }}-secret
+                  key: {{ . }}
+          {{- end }}
+            {{- end }}
+            {{- end }}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aws-secret
+                  key: aws_access_key_id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aws-secret
+                  key: aws_secret_access_key
+      restartPolicy: OnFailure
+      imagePullSecrets:
+        - name: regsecret
+{{- end }}

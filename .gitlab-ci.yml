@@ -1,26 +1,90 @@
 ---
+variables:
+  BUCKET_NAME: "nike-drop-bucket"
+  AWS_DEFAULT_REGION: "us-east-1"
+  AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+  AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+
 stages:
   - build
   - deploy
+  - cleanup
 
-build-job:
+terraform-job-build:
   stage: build
-  image: python:3.7.12
+  image:
+    name: hashicorp/terraform:light
+    entrypoint: [""]
   script:
-    - python3 -m pip install -r requirements.txt --user
-    - python3 nike_template.py
-  tags: ["docker"]
+    - echo "Creating AWS S3..."
+    - /bin/terraform -chdir=terraform init
+    - /bin/terraform -chdir=terraform apply -auto-approve
+  variables:
+     TF_VAR_AWS_REGION: $AWS_DEFAULT_REGION
+     TF_VAR_S3_NAME: $BUCKET_NAME
+  tags: ["kubernetes"]
   artifacts:
     paths:
-      - docker-compose.yml
-      - host*/
+      - ./terraform/.terraform
+      - ./terraform/.terraform.lock.hcl
+      - ./terraform/.terraform.tfstate
     expire_in: 1 hour
 
-deploy-job:
-  stage: deploy
+kaniko-job-build:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
   script:
-    - docker-compose up
-  artifacts:
-    paths:
-      - ./*screen.png
-    expire_in: 1 hour
+    - echo "Preparing Kaniko to work with image..."
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_JOB_TOKEN\"}}}" > /kaniko/.docker/config.json
+    - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:latest
+  only:
+    refs: ["helm"]
+    changes: ["Dockerfile"]
+  dependencies: ["terraform-job-build"]
+  tags: ["kubernetes"]
+
+helm-job-deploy:
+  stage: deploy
+  image:
+    name: dtzar/helm-kubectl:3.7
+    entrypoint: [""]
+  before_script:
+    - kubectl config use-context a1ntwan/nike_plus:gitlab-agent
+    - kubectl create namespace nike-plus || true
+    - kubectl delete secrets regsecret --namespace="nike-plus" || true
+    - kubectl create secret docker-registry regsecret --docker-server="$CI_REGISTRY" --docker-username="$CI_DEPLOY_USER" --docker-password="$CI_DEPLOY_PASSWORD" --namespace="nike-plus"
+  script:
+    - echo "Using Helm to deploy kubernetes cron jobs..."
+    - helm uninstall nike || true
+    - helm install nike nike -f nike/values.yaml -f nike/vars.yml --set aws_access_key_id="$AWS_ACCESS_KEY_ID" --set aws_secret_access_key="$AWS_SECRET_ACCESS_KEY" --set container.image="$CI_REGISTRY_IMAGE:latest"
+  tags: ["kubernetes"]
+
+helm-job-cleanup:
+  stage: cleanup
+  image:
+    name: dtzar/helm-kubectl:3.7
+    entrypoint: [""]
+  script:
+    - echo "Cleaning up nike release..."
+    - kubectl config use-context a1ntwan/nike_plus:gitlab-agent
+    - helm uninstall nike
+  when: on_failure
+  tags: ["kubernetes"]
+
+terraform-job-cleanup:
+  stage: cleanup
+  image:
+    name: hashicorp/terraform:light
+    entrypoint: [""]
+  script:
+    - echo "Deleting AWS S3..."
+    - /bin/terraform -chdir=terraform destroy -auto-approve
+  variables:
+    TF_VAR_AWS_REGION: $AWS_DEFAULT_REGION
+    TF_VAR_S3_NAME: $BUCKET_NAME
+  when: on_failure
+  dependencies: ["helm-job-cleanup"]
+  tags: ["kubernetes"]
