@@ -1,4 +1,3 @@
-from os import environ
 from seleniumwire import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver import ActionChains
@@ -7,42 +6,48 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.chrome.service import Service
 from pyvirtualdisplay import Display
 from time import sleep
 import datetime
 from loguru import logger
 import boto3
+from ec2_metadata import ec2_metadata
 
 size_to_num = {'5': 1, '5.5': 2, '6': 3, '6.5': 4, '7': 5, '7.5': 6, '8': 7, '8.5': 8, '9': 9, '9.5': 10, '10': 11,
                '10.5': 12, '11': 13, '11.5': 14, '12': 15}
 
-URL = environ['URL']
-PRODUCT_ID = environ['PRODUCT_ID']
-EMAIL = environ['EMAIL']
-PASS = environ['PASS']
-SIZE = environ['SIZE']
-NAME = environ['NAME']
-CVV = environ['CVV']
-USER_AGENT = environ['USER_AGENT']
-PROXY = environ['PROXY']
-
+{% for host, item in credentials.items() %}
+    {% if inventory_hostname == host %}
+URL = "{{ item.url }}"
+EMAIL = "{{ item.email }}"
+PASS = "{{ item.password }}"
+SIZE = "{{ item.size }}"
+CVV = "{{ item.cvv }}"
+USER_AGENT = "{{ item.user_agent }}"
+PROXY = "{{ item.proxy }}"
+YEAR = "{{ item.time.split(' ')[0].split('-')[0] | int }}"
+MONTH = "{{ item.time.split(' ')[0].split('-')[1] | int }}"
+DAY = "{{ item.time.split(' ')[0].split('-')[2] | int }}"
+HOUR = "{{ item.time.split(' ')[1].split(':')[0] | int }}"
+MINUTE = "{{ item.time.split(' ')[1].split(':')[1] | int }}"
+SECOND = "{{ item.time.split(' ')[1].split(':')[2] | int }}"
+    {% endif %}
+{% endfor %}
 
 s3_session = boto3.Session(
-    aws_access_key_id=environ['AWS_ACCESS_KEY_ID'],
-    aws_secret_access_key=environ['AWS_SECRET_ACCESS_KEY'],
+    aws_access_key_id='{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}',
+    aws_secret_access_key='{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}',
 )
 
 proxy = {
-       'proxy': {
-           'https': PROXY
-           }
-       }
+        'proxy': {
+            'https': PROXY
+            }
+        }
 
-defender = 'defender.crx'
-webrtc = 'webrtc.crx'
-executable_path = Service('/sneakers/chromedriver/chromedriver')
 
+defender = '/home/ec2-user/sneakers/defender.crx'
+webrtc = '/home/ec2-user/sneakers/webrtc.crx'
 
 class Nike:
     def __init__(self):
@@ -55,6 +60,10 @@ class Nike:
         options.add_extension(defender)
         options.add_extension(webrtc)
         options.add_argument('--no-sandbox')
+        chrome_prefs = dict()
+        options.experimental_options["prefs"] = chrome_prefs
+        chrome_prefs["profile.default_content_settings"] = {"images": 2}
+        chrome_prefs["profile.managed_default_content_settings"] = {"images": 2}
         options.add_experimental_option('excludeSwitches', ['enable-automation'])
         options.add_experimental_option('useAutomationExtension', False)
         options.add_argument('--disable-blink-features=AutomationControlled')
@@ -67,12 +76,11 @@ class Nike:
 
         driver = webdriver.Chrome(
             seleniumwire_options=proxy,
-            options=options,
-            service=executable_path,
-            service_args=['--verbose', '--log-path=/sneakers/logs/chrdrv.log']
+            chrome_options=options,
+            executable_path='/usr/local/bin/chromedriver/chromedriver',
+            service_args=['--verbose', '--log-path=/home/ec2-user/sneakers/chrdrv.log']
         )
         self.driver = driver
-        self.ip = ''
 
     def page_open(self, page=None):
         """Open the web-page"""
@@ -81,8 +89,8 @@ class Nike:
     def my_ip(self):
         """Check my proxy ip"""
         self.driver.get('https://ipinfo.io/ip')
-        self.ip = self.driver.find_element(By.TAG_NAME, 'body').text
-        print(f'My ip is: {self.ip}')
+        ip = self.driver.find_element(By.TAG_NAME, 'body')
+        print(f'My ip is: {ip.text}')
 
     def load(self, by, string, rule):
         """Waiting for the element to apply to"""
@@ -109,8 +117,8 @@ class Nike:
         sleep(1)
         while True:
             if self.driver.find_elements(By.CLASS_NAME, 'nike-unite-error-panel'):
+                print(datetime.datetime.now(), 'Login Error')
                 self.driver.find_element(By.CLASS_NAME, 'nike-unite-error-close').click()
-                print(datetime.datetime.now(), 'Login failed')
                 self.driver.find_elements(By.TAG_NAME, 'input')[2].send_keys(PASS, Keys.ENTER)
                 sleep(1)
             else:
@@ -139,27 +147,21 @@ class Nike:
         self.window.stop()
 
     def screen(self):
-        """Making a final screenshot and uploading it to S3, placing public_ip in a name"""
-        self.driver.save_screenshot(f'{self.ip}--screen.png')
+        """Making a final screenshot and saving it to S3, placing public_ip in a name"""
+        pub_ip = ec2_metadata.public_ipv4
+        self.driver.save_screenshot(f'{pub_ip}--screen.png')
         s3 = s3_session.resource('s3')
-        s3.meta.client.upload_file(f'{self.ip}--screen.png', 'nike-drop-bucket', f'{self.ip}--screen.png')
+        s3.meta.client.upload_file(f'{pub_ip}--screen.png', "{{ lookup('env', 'BUCKET_NAME') }}", f'{pub_ip}--screen.png')
 
     @staticmethod
     def logger():
         """Adding Exceptions Logs"""
-        return logger.add("/sneakers/logs/sneakers_err.log", format="{time} {level} {message}", level="DEBUG")
+        return logger.add("/home/ec2-user/sneakers/sneakers_err.log", format="{time} {level} {message}", level="DEBUG")
 
 
 def drop_nike():
     """Drop time function"""
-    drop = datetime.datetime(
-        int(environ['YEAR']),
-        int(environ['MONTH']),
-        int(environ['DAY']),
-        int(environ['HOUR']),
-        int(environ['MINUTE']),
-        int(environ['SECOND'])
-    )
+    drop = datetime.datetime(int(YEAR), int(MONTH), int(DAY), int(HOUR), int(MINUTE), int(SECOND))
     delta = drop - datetime.datetime.now()
     if drop.day >= datetime.datetime.now().day and drop.time() > datetime.datetime.now().time():
         return delta.seconds
@@ -235,7 +237,6 @@ def main():
     except TimeoutException:
         print(datetime.datetime.now(), 'TimeoutException')
         exit(8)
-
 
 if __name__ == '__main__':
     main()

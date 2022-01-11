@@ -1,0 +1,56 @@
+{
+"variables": {
+      "aws_access": "{{ env `AWS_ACCESS_KEY_ID` }}",
+      "aws_secret": "{{ env `AWS_SECRET_ACCESS_KEY` }}"
+      },
+
+"builders": [
+  {    
+    "type": "amazon-ebs",
+    "region": "us-east-1",
+    "access_key": "{{user `aws_access`}}",
+    "secret_key": "{{user `aws_secret`}}",
+    "instance_type": "t2.micro",
+    "ssh_username": "ec2-user",
+    "ami_name": "nike-plus",
+    "ami_description": "nike plus",
+     "vpc_filter": {
+       "filters": {
+         "tag:Name": "My App VPC",
+         "isDefault": "false"
+       }
+     },
+     "subnet_filter": {
+       "filters": {
+         "tag:Network Type": "Public"
+         },
+       "random": true
+    },
+    "source_ami_filter": {    
+        "filters": { 
+            "virtualization-type": "hvm",
+            "name": "amzn2-ami-hvm-2.0.*-gp2",       
+            "root-device-type": "ebs"       
+            },       
+        "owners": ["amazon"],       
+        "most_recent": true    
+    },
+    "tags": {
+        "Builder": "Packer"
+        }
+  }
+ ],
+
+ "provisioners": [
+    {
+        "type": "shell",
+        "inline": [
+             "sudo yum install -y xorg-x11-server-Xvfb atk at-spi2-atk at-spi2-core cups-libs dbus-glib libpng-devel libwayland-cursor libpng12 libpng12-devel alsa-lib-devel vulkan libXScrnSaver libXcomposite libXrandr libXcursor libXinerama libxkbcommon gtk3 gdk-pixbuf2 cairo cairo-gobject pango liberation-fonts xdg-utils GConf2 GConf2-devel",
+             "sudo rpm -ivh https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm",
+             "sudo wget https://chromedriver.storage.googleapis.com/96.0.4664.18/chromedriver_linux64.zip -O /tmp/chromedriver_linux64.zip",
+             "sudo unzip /tmp/chromedriver_linux64.zip -d /usr/local/bin/chromedriver"
+        ]
+    }
+
+ ]
+}

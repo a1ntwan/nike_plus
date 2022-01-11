@@ -1,0 +1,76 @@
+---
+- name: nike.com
+  hosts: all
+  become: yes
+
+ 
+  tasks:
+
+   - name: 'set timezone Europe/Moscow'
+     timezone:
+       name: Europe/Moscow
+     tags: main
+
+   - name: 'install dependencies'
+     pip:
+       name: '{{ item }}'
+       state: latest
+     loop:
+       - pyvirtualdisplay
+       - loguru
+       - ec2-metadata
+       - boto3
+       - pyyaml
+       - selenium
+       - selenium-wire
+     vars:
+       ansible_python_interpreter: /bin/python3
+ 
+   - name: 'create directory'
+     file:
+       path: "/home/ec2-user/sneakers"
+       owner: ec2-user
+       group: ec2-user
+       mode: 0775
+       state: directory
+     tags: main
+ 
+   - name: 'copy Chrome plugins'
+     copy:
+       src: "{{ item.src }}"
+       dest: "{{ item.dest }}"
+       owner: ec2-user
+       group: ec2-user
+       mode: "{{ item.perm }}"
+     loop:
+       - { src: "defender.crx", dest: "/home/ec2-user/sneakers/defender.crx", perm: "0755" }
+       - { src: "webrtc.crx", dest: "/home/ec2-user/sneakers/webrtc.crx", perm: "0755" }
+     tags: main
+     
+   - name: 'include group_vars/credentials.yml into a variable'
+     include_vars: 
+       file: "group_vars/credentials.yml"
+       name: credentials
+     tags: main 
+
+   - name: 'copy Python template'
+     template:
+       src: "templates/sneakers_aws.py.j2"
+       dest: "/home/ec2-user/sneakers/sneakers_aws.py"
+       owner: ec2-user
+       group: ec2-user
+       mode: 0775
+       lstrip_blocks: yes
+     tags: main
+
+   - name: 'run python script'
+     shell: python3 /home/ec2-user/sneakers/sneakers_aws.py >> /home/ec2-user/sneakers/sneakers_linux.log 2>&1
+     register: output
+     async: 20000
+     poll: 0
+     tags: exe
+     become_user: ec2-user
+
+   - debug:
+       var: output
+     tags: exe

@@ -1,6 +1,6 @@
----
 variables:
   BUCKET_NAME: "nike-drop-bucket"
+  EC2_KEY: "practice"
   AWS_DEFAULT_REGION: "us-east-1"
   AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
   AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
@@ -10,19 +10,69 @@ stages:
   - deploy
   - cleanup
 
-terraform-job-build:
+cache:
+  paths:
+    - num.txt
+    - ami.txt
+
+busybox-job-build:
+  stage: build
+  image: busybox:latest 
+  script:
+    - echo NUM="$(cat ansible/group_vars/credentials.yml | grep "host" | wc -l)" >> num.txt
+  tags: ["docker"]
+  artifacts:
+    paths: ["num.txt"]
+    expire_in: 1 hour
+
+packer-job-build:
   stage: build
   image:
-    name: hashicorp/terraform:light
+    name: hashicorp/packer:full
+    entrypoint: [""]
+  before_script:
+    - source num.txt
+  script:
+    - echo "Preparing AWS AMI by Packer..."
+    - /go/bin/packer validate packer/packer_aws.json && /go/bin/packer build packer/packer_aws.json
+  only:
+    refs: ["aws"]
+    changes: ["packer/packer_aws.json"]
+  dependencies: ["busybox-job-build"]
+  tags: ["docker"]
+
+aws-job-build:
+  stage: build
+  image: 
+    name: amazon/aws-cli:amd64 
     entrypoint: [""]
   script:
-    - echo "Creating AWS S3..."
+    - yum install -y jq && echo NIKE_AMI="$(/usr/local/bin/aws ec2 describe-images --owners self --output json --region "$AWS_DEFAULT_REGION" --filters Name="description",Values="nike plus" | jq '.Images[] | {ImageId}' | jq --raw-output '.ImageId')" >> ami.txt
+  dependencies: ["packer-job-build"]
+  tags: ["docker"]
+  artifacts:
+    paths: ["ami.txt"]
+    expire_in: 1 hour
+
+terraform-job-build:
+  stage: build
+  image: 
+    name: hashicorp/terraform:light
+    entrypoint: [""]
+  before_script:
+    - sed -i 's/NUM/TF_VAR_EC2_COUNT/g' num.txt && sed -i 's/NIKE_AMI/TF_VAR_EC2_AMI/g' ami.txt
+    - source num.txt && source ami.txt
+    - export TF_VAR_EC2_COUNT && export TF_VAR_EC2_AMI
+  script:
+    - echo "Creating AWS resources by Terraform..."
     - /bin/terraform -chdir=terraform init
     - /bin/terraform -chdir=terraform apply -auto-approve
   variables:
      TF_VAR_AWS_REGION: $AWS_DEFAULT_REGION
      TF_VAR_S3_NAME: $BUCKET_NAME
-  tags: ["kubernetes"]
+     TF_VAR_EC2_KEYPAIR: $EC2_KEY
+  dependencies: ["aws-job-build"]
+  tags: ["docker"]
   artifacts:
     paths:
       - ./terraform/.terraform
@@ -30,61 +80,34 @@ terraform-job-build:
       - ./terraform/.terraform.tfstate
     expire_in: 1 hour
 
-kaniko-job-build:
-  stage: build
-  image:
-    name: gcr.io/kaniko-project/executor:debug
-    entrypoint: [""]
-  script:
-    - echo "Preparing Kaniko to work with image..."
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_JOB_TOKEN\"}}}" > /kaniko/.docker/config.json
-    - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:latest
-  only:
-    refs: ["helm"]
-    changes: ["Dockerfile"]
-  dependencies: ["terraform-job-build"]
-  tags: ["kubernetes"]
 
-helm-job-deploy:
-  stage: deploy
-  image:
-    name: dtzar/helm-kubectl:3.7
-    entrypoint: [""]
-  before_script:
-    - kubectl config use-context a1ntwan/nike_plus:gitlab-agent
-    - kubectl create namespace nike-plus || true
-    - kubectl delete secrets regsecret --namespace="nike-plus" || true
-    - kubectl create secret docker-registry regsecret --docker-server="$CI_REGISTRY" --docker-username="$CI_DEPLOY_USER" --docker-password="$CI_DEPLOY_PASSWORD" --namespace="nike-plus"
-  script:
-    - echo "Using Helm to deploy kubernetes cron jobs..."
-    - helm uninstall nike || true
-    - helm install nike nike -f nike/values.yaml -f nike/vars.yml --set aws_access_key_id="$AWS_ACCESS_KEY_ID" --set aws_secret_access_key="$AWS_SECRET_ACCESS_KEY" --set container.image="$CI_REGISTRY_IMAGE:latest"
-  tags: ["kubernetes"]
+ansible-job-deploy:
+ stage: deploy
+ before_script:
+   - chmod +x mk_inventory.sh && ./mk_inventory.sh
+ script:
+   - echo "Running script with Ansible..."
+   - cd ansible; ansible-playbook sneakers.yml
 
-helm-job-cleanup:
-  stage: cleanup
-  image:
-    name: dtzar/helm-kubectl:3.7
-    entrypoint: [""]
-  script:
-    - echo "Cleaning up nike release..."
-    - kubectl config use-context a1ntwan/nike_plus:gitlab-agent
-    - helm uninstall nike
-  when: on_failure
-  tags: ["kubernetes"]
 
 terraform-job-cleanup:
   stage: cleanup
   image:
     name: hashicorp/terraform:light
     entrypoint: [""]
+  before_script:
+    - sed -i 's/NUM/TF_VAR_EC2_COUNT/g' num.txt && sed -i 's/NIKE_AMI/TF_VAR_EC2_AMI/g' ami.txt
+    - source num.txt && source ami.txt
+    - export TF_VAR_EC2_COUNT && export TF_VAR_EC2_AMI
   script:
-    - echo "Deleting AWS S3..."
+    - echo "Deleting AWS resources..."
     - /bin/terraform -chdir=terraform destroy -auto-approve
   variables:
-    TF_VAR_AWS_REGION: $AWS_DEFAULT_REGION
-    TF_VAR_S3_NAME: $BUCKET_NAME
-  when: on_failure
-  dependencies: ["helm-job-cleanup"]
-  tags: ["kubernetes"]
+     TF_VAR_AWS_REGION: $AWS_DEFAULT_REGION
+     TF_VAR_S3_NAME: $BUCKET_NAME
+     TF_VAR_EC2_KEYPAIR: $EC2_KEY
+  rules:
+    - if $CI_COMMIT_BRANCH == "aws"  
+      when: manual
+    - when: on_failure
+  tags: ["docker"]
