@@ -1,3 +1,4 @@
+from os import environ
 from seleniumwire import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver import ActionChains
@@ -15,14 +16,13 @@ from loguru import logger
 size_to_num = {'5': 1, '5.5': 2, '6': 3, '6.5': 4, '7': 5, '7.5': 6, '8': 7, '8.5': 8, '9': 9, '9.5': 10, '10': 11,
                '10.5': 12, '11': 13, '11.5': 14, '12': 15}
 
-TIME = "2021-12-10 15:30:01"
-URL = "https://www.nike.com/ru/launch/t/womens-air-force-1-high-sculpt-silver"
-EMAIL = "onetwothree@yandex.ru"
-PASSWORD = "qwerty"
-SIZE = "9"
-CVV = "000"
-USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36"
-PROXY = "https://cz5zGr:0vf3TJ@45.11.126.89:8000"
+URL = environ['URL']
+EMAIL = environ['EMAIL']
+PASSWORD = environ['PASS']
+SIZE = environ['SIZE']
+CVV = environ['CVV']
+USER_AGENT = environ['USER_AGENT']
+PROXY = environ['PROXY']
 
 proxy = {
     'proxy': {
@@ -32,13 +32,13 @@ proxy = {
 
 defender = 'defender.crx'
 webrtc = 'webrtc.crx'
-executable_path = Service('chromedriver')
+executable_path = Service('/sneakers/chromedriver/chromedriver')
 
 
 class Nike:
     def __init__(self):
         """Use/not headless Chrome. Hide Selenium. Open the page with Chrome"""
-        window = Display(visible=1, size=(1366, 768))
+        window = Display(visible=0, size=(1366, 768))
         self.window = window
         self.window.start()
         options = ChromeOptions()
@@ -60,7 +60,7 @@ class Nike:
             seleniumwire_options=proxy,
             options=options,
             service=executable_path,
-            service_args=['--verbose', '--log-path=chrdrv.log']
+            service_args=['--verbose', '--log-path=/sneakers/logs/chrdrv.log']
         )
         self.driver = driver
         self.ip = ''
@@ -136,18 +136,18 @@ class Nike:
     @staticmethod
     def logger():
         """Adding Exceptions Logs"""
-        return logger.add("sneakers_err.log", format="{time} {level} {message}", level="DEBUG")
+        return logger.add("/sneakers/logs/sneakers_err.log", format="{time} {level} {message}", level="DEBUG")
 
 
 def drop_nike():
     """Drop time function"""
     drop = datetime.datetime(
-        int(TIME.split('-')[0]),
-        int(TIME.split('-')[1]),
-        int(TIME.split('-')[2].split(' ')[0]),
-        int(TIME.split(':')[0].split(' ')[1]),
-        int(TIME.split(':')[1]),
-        int(TIME.split(':')[2])
+        int(environ['YEAR']),
+        int(environ['MONTH']),
+        int(environ['DAY']),
+        int(environ['HOUR']),
+        int(environ['MINUTE']),
+        int(environ['SECOND'])
     )
     delta = drop - datetime.datetime.now()
     if drop.day >= datetime.datetime.now().day and drop.time() > datetime.datetime.now().time():

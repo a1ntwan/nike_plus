@@ -1,0 +1,6 @@
+selenium
+selenium-wire
+pyyaml
+PyVirtualDisplay
+loguru
+boto3
