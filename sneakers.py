@@ -12,23 +12,32 @@ from pyvirtualdisplay import Display
 from time import sleep
 import datetime
 from loguru import logger
+import boto3
 
 size_to_num = {'5': 1, '5.5': 2, '6': 3, '6.5': 4, '7': 5, '7.5': 6, '8': 7, '8.5': 8, '9': 9, '9.5': 10, '10': 11,
                '10.5': 12, '11': 13, '11.5': 14, '12': 15}
 
 URL = environ['URL']
+PRODUCT_ID = environ['PRODUCT_ID']
 EMAIL = environ['EMAIL']
-PASSWORD = environ['PASS']
+PASS = environ['PASS']
 SIZE = environ['SIZE']
+NAME = environ['NAME']
 CVV = environ['CVV']
 USER_AGENT = environ['USER_AGENT']
 PROXY = environ['PROXY']
 
+
+s3_session = boto3.Session(
+    aws_access_key_id=environ['AWS_ACCESS_KEY_ID'],
+    aws_secret_access_key=environ['AWS_SECRET_ACCESS_KEY'],
+)
+
 proxy = {
-    'proxy': {
-        'https': PROXY
-    }
-}
+       'proxy': {
+           'https': PROXY
+           }
+       }
 
 defender = 'defender.crx'
 webrtc = 'webrtc.crx'
@@ -96,13 +105,13 @@ class Nike:
     def login(self):
         """Login, if error do it one more time"""
         self.driver.find_elements(By.TAG_NAME, 'input')[1].send_keys(EMAIL)
-        self.driver.find_elements(By.TAG_NAME, 'input')[2].send_keys(PASSWORD, Keys.ENTER)
+        self.driver.find_elements(By.TAG_NAME, 'input')[2].send_keys(PASS, Keys.ENTER)
         sleep(1)
         while True:
             if self.driver.find_elements(By.CLASS_NAME, 'nike-unite-error-panel'):
                 self.driver.find_element(By.CLASS_NAME, 'nike-unite-error-close').click()
                 print(datetime.datetime.now(), 'Login failed')
-                self.driver.find_elements(By.TAG_NAME, 'input')[2].send_keys(PASSWORD, Keys.ENTER)
+                self.driver.find_elements(By.TAG_NAME, 'input')[2].send_keys(PASS, Keys.ENTER)
                 sleep(1)
             else:
                 break
@@ -130,8 +139,10 @@ class Nike:
         self.window.stop()
 
     def screen(self):
-        """Making a final screenshot and saving it to /screen, placing public_ip in a name"""
+        """Making a final screenshot and uploading it to S3, placing public_ip in a name"""
         self.driver.save_screenshot(f'{self.ip}--screen.png')
+        s3 = s3_session.resource('s3')
+        s3.meta.client.upload_file(f'{self.ip}--screen.png', 'nike-drop-bucket', f'{self.ip}--screen.png')
 
     @staticmethod
     def logger():
